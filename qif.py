@@ -12,7 +12,9 @@ Original source from http://code.activestate.com/recipes/306103-quicken-qif-file
 
 import sys
 import datetime
-
+import dateutil
+import csv
+from decimal import Decimal
 
 class QifItem:
 
@@ -77,10 +79,10 @@ def parse_qif(infile):
             curItem = QifItem()
             curItem.account = account
         elif firstchar == 'D':
-            year, month, day = map(int, data.split('/'))
+            day, month, year = map(int, data.split('/'))
             curItem.date = datetime.datetime(year=year, month=month, day=day)
         elif firstchar == 'T':
-            curItem.amount = data
+            curItem.amount = Decimal(data.replace(',', ''))
         elif firstchar == 'C':
             curItem.cleared = data
         elif firstchar == 'P':
@@ -96,7 +98,7 @@ def parse_qif(infile):
         elif firstchar == 'E':
             curItem.split_memo = data
         elif firstchar == '$':
-            curItem.split_amount = data
+            curItem.split_amount = Decimal(data.replace(',', ''))
         elif firstchar == 'N':
             if curItem.type == 'Account':
                 account = data
@@ -108,9 +110,60 @@ def parse_qif(infile):
 
     return items
 
+def getValue(entry, headerOptions):
+    for header in headerOptions:
+        if header in entry:
+            return entry[header]
+    return None
+
+def parse_csv(infile):
+    """
+    Parse a CSV file and return a list of entries.
+    infile should be open file-like object (supporting readline() ).
+    """
+
+    dateHeaders = ['date', 'Date', 'Transaction Date']
+    descriptionHeaders = ['description', 'Description', 'Transaction Remarks']
+    withdrawalHeaders = ['Withdrawals', 'Withdrawal Amount (INR )', 'amount', 'Amount(GBP)']
+    depositHeaders = ['Deposits', 'Deposit Amount (INR )']
+    typeHeaders = ['debitCreditCode']
+
+    csvreader = csv.DictReader(infile)
+    account = None
+    items = []
+
+    for line in csvreader:
+        curItem = QifItem()
+
+        date_value = getValue(line, dateHeaders)
+        if date_value == 'Pending':
+            continue
+        curItem.date = dateutil.parser.parse(date_value)
+        curItem.payee = getValue(line, descriptionHeaders)
+
+        txnType = getValue(line, typeHeaders)
+        if txnType is not None:
+            amount = getValue(line, withdrawalHeaders)
+            if txnType == 'Debit':
+                curItem.amount = -1 * Decimal(amount.replace(',', ''))
+            else:
+                curItem.amount = Decimal(amount.replace(',', ''))
+        else:
+            withdrawal = getValue(line, withdrawalHeaders)
+            if withdrawal is not None and withdrawal != '--' and withdrawal != '0':
+                curItem.amount = -1 * Decimal(withdrawal.replace(',', ''))
+            
+            deposit = getValue(line, depositHeaders)
+            if deposit is not None and deposit != '--' and deposit != '0':
+                curItem.amount = Decimal(deposit.replace(',', ''))
+        
+        items.append(curItem)
+
+    return items
+
 
 if __name__ == '__main__':
     # read from stdin and write CSV to stdout
-    items = parse_qif(sys.stdin)
+    items = parse_csv(sys.stdin)
     for item in items:
-        print item
+        print (item)

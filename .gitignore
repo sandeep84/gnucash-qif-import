@@ -1,0 +1,7 @@
+rules.txt
+__pycache__
+*.pyc
+*.qif
+*.gnucash
+*.log
+*.swp
