@@ -78,7 +78,7 @@ def get_ac_from_str(search_str, rules, book=None, split_account=None):
 def getCategory(book, item, rules):
     return get_ac_from_str(item.payee, rules, book, item.account)
 
-def add_transaction(book, acc, acc_splits, item, currency, rules):
+def add_transaction(book, acc, acc_splits, item, currency, rules, dry_run):
     if item.split_category is None:
         item.split_category = getCategory(book, item, rules)
     if item.split_category == "IGNORE":
@@ -94,18 +94,19 @@ def add_transaction(book, acc, acc_splits, item, currency, rules):
             logging.debug("    - Skipping since transaction aready exists...")
             return
 
-    logging.info('Adding transaction for account "%s" (%s %s %s)..', item.account, item.payee, item.split_amount,
+    logging.info('Adding transaction for account "%s" (%s %s %s %s)..', item.account, item.date.date(), item.payee, item.split_amount,
                  currency.mnemonic)
 
-    tx = piecash.Transaction(
-            post_date=item.date.date(),
-            enter_date=today,
-            currency=currency,
-            description = item.payee,
-            splits = [
-                piecash.Split(account=acc,  value=amount),
-                piecash.Split(account=acc2, value=-amount),
-            ])
+    if not dry_run:
+        tx = piecash.Transaction(
+                post_date=item.date.date(),
+                enter_date=today,
+                currency=currency,
+                description = item.payee,
+                splits = [
+                    piecash.Split(account=acc,  value=amount),
+                    piecash.Split(account=acc2, value=-amount),
+                ])
 
 def write_transactions_to_gnucash(gnucash_file, currency, all_items, default_account, rules, dry_run=False):
     logging.debug('Opening GnuCash file %s..', gnucash_file)
@@ -115,7 +116,7 @@ def write_transactions_to_gnucash(gnucash_file, currency, all_items, default_acc
 
     try:
         for item in all_items:
-            add_transaction(book, acc, acc.splits, item, currency, rules)
+            add_transaction(book, acc, acc.splits, item, currency, rules, dry_run)
         book.flush()
 
     finally:
@@ -146,6 +147,7 @@ def main(args):
     rules = readrules(args.rulesfile)
 
     for fn in args.file:
+        print("Processing file: " + fn)
         default_account = args.default_account
         if default_account is None:
             default_account = get_ac_from_str(fn, rules)

@@ -16,6 +16,18 @@ import dateutil
 import csv
 from decimal import Decimal
 
+class DictReaderStrip(csv.DictReader):
+    @property                                    
+    def fieldnames(self):
+        if self._fieldnames is None:
+            # Initialize self._fieldnames
+            # Note: DictReader is an old-style class, so can't use super()
+            csv.DictReader.fieldnames.fget(self)
+            if self._fieldnames is not None:
+                self._fieldnames = [name.strip() for name in self._fieldnames]
+        return self._fieldnames
+
+
 class QifItem:
 
     def __init__(self):
@@ -113,7 +125,7 @@ def parse_qif(infile):
 def getValue(entry, headerOptions):
     for header in headerOptions:
         if header in entry:
-            return entry[header]
+            return entry[header].strip()
     return None
 
 def parse_csv(infile):
@@ -124,11 +136,11 @@ def parse_csv(infile):
 
     dateHeaders = ['date', 'Date', 'Transaction Date']
     descriptionHeaders = ['description', 'Description', 'Transaction Remarks']
-    withdrawalHeaders = ['Withdrawals', 'Withdrawal Amount (INR )', 'amount', 'Amount(GBP)']
+    withdrawalHeaders = ['Withdrawals', 'Withdrawal Amount (INR )', 'amount', 'Amount(GBP)', 'Amount']
     depositHeaders = ['Deposits', 'Deposit Amount (INR )']
     typeHeaders = ['debitCreditCode']
 
-    csvreader = csv.DictReader(infile)
+    csvreader = DictReaderStrip(infile)
     account = None
     items = []
 
@@ -136,9 +148,13 @@ def parse_csv(infile):
         curItem = QifItem()
 
         date_value = getValue(line, dateHeaders)
-        if date_value == 'Pending':
+        if date_value == 'Pending' or date_value == '--':
             continue
-        curItem.date = dateutil.parser.parse(date_value)
+        try:
+            curItem.date = dateutil.parser.isoparse(date_value)
+        except:
+            curItem.date = dateutil.parser.parse(date_value, dayfirst=True)
+
         curItem.payee = getValue(line, descriptionHeaders)
 
         txnType = getValue(line, typeHeaders)
